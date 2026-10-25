@@ -157,3 +157,14 @@ client.on('interactionCreate', async interaction => {
 });
 
 client.login(process.env.DISCORD_TOKEN);
+
+// --- RenderのWeb Service対策用簡易HTTPサーバー ---
+const http = require('http');
+const PORT = process.env.PORT || 3000;
+
+http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Discord Bot is running!\n');
+}).listen(PORT, () => {
+    console.log(`🌐 HTTP Server is listening on port ${PORT}`);
+});

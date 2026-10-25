@@ -5,12 +5,9 @@ const {
     Routes, 
     SlashCommandBuilder, 
     ApplicationIntegrationType, 
-    InteractionContextType,
-    EmbedBuilder
+    InteractionContextType 
 } = require('discord.js');
 require('dotenv').config();
-const openaiManager = require('./openaiManager');
-const { callGemini } = require('./geminiManager');
 const http = require('http');
 
 // 1. Discordクライアントの初期化
@@ -22,7 +19,7 @@ const client = new Client({
     ]
 });
 
-// 2. コマンド定義
+// 2. コマンド定義（検索機能のみ）
 const commands = [
     // /search コマンド
     new SlashCommandBuilder()
@@ -42,35 +39,6 @@ const commands = [
                 .setDescription('メンバーを検索')
                 .addUserOption(opt => opt.setName('user').setDescription('対象のユーザーを選択').setRequired(true))
         ),
-
-    // /ai コマンド (モデル選択付き)
-    new SlashCommandBuilder()
-        .setName('ai')
-        .setDescription('AIに質問します（モデル選択・自動ローテーション対応）')
-        .setIntegrationTypes([ApplicationIntegrationType.UserInstall, ApplicationIntegrationType.GuildInstall])
-        .setContexts([InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel])
-        .addStringOption(opt => 
-            opt.setName('prompt')
-               .setDescription('AIへの質問内容')
-               .setRequired(true)
-        )
-        .addStringOption(opt => 
-            opt.setName('model')
-               .setDescription('使用するAIモデルを選択')
-               .setRequired(false)
-               .addChoices(
-                   { name: 'Gemini 1.5 Flash (完全無料・おすすめ)', value: 'gemini-1.5-flash' },
-                   { name: 'OpenAI: gpt-4o', value: 'gpt-4o' },
-                   { name: 'OpenAI: gpt-4o-mini', value: 'gpt-4o-mini' }
-               )
-        ),
-
-    // /models コマンド
-    new SlashCommandBuilder()
-        .setName('models')
-        .setDescription('利用可能なAIモデルの一覧を表示します')
-        .setIntegrationTypes([ApplicationIntegrationType.UserInstall, ApplicationIntegrationType.GuildInstall])
-        .setContexts([InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel]),
 
     // メッセージ右クリックメニュー
     {
@@ -98,61 +66,14 @@ client.once('clientReady', async () => {
     }
 });
 
-// 4. インタラクション受信処理
+// 4. インタラクション受信処理（必要に応じて検索の処理を追加・維持）
 client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
         const { commandName, options } = interaction;
 
-        // /models コマンド
-        if (commandName === 'models') {
-            const embed = new EmbedBuilder()
-                .setTitle('📋 利用可能なAIモデル一覧')
-                .setColor(0x00AAFF)
-                .addFields(
-                    { name: '🌟 Google Gemini (完全無料)', value: '`gemini-1.5-flash` (高速・おすすめ)', inline: false },
-                    { name: '🤖 OpenAI (要APIキー残高)', value: '`gpt-4o`\n`gpt-4o-mini`', inline: false }
-                )
-                .setFooter({ text: '※GeminiはGoogle AI Studioでキーを発行して利用できます！' });
-
-            return interaction.reply({ embeds: [embed], flags: 64 });
-        }
-
-        // /ai コマンド
-        if (commandName === 'ai') {
-            const prompt = options.getString('prompt');
-            const model = options.getString('model') || 'gemini-1.5-flash';
-            await interaction.deferReply();
-
-            try {
-                let answer = '';
-
-                // Gemini の場合
-                if (model.startsWith('gemini')) {
-                    answer = await callGemini(prompt, model);
-                } 
-                // OpenAI の場合
-                else {
-                    const completion = await openaiManager.safeRequest(async (openai) => {
-                        return await openai.chat.completions.create({
-                            model: model,
-                            messages: [
-                                { role: 'system', content: 'あなたは親切なDiscordのボットアシスタントです。' },
-                                { role: 'user', content: prompt }
-                            ],
-                        });
-                    });
-                    answer = completion.choices[0].message.content;
-                }
-                
-                if (answer.length > 2000) {
-                    answer = answer.substring(0, 1990) + '...';
-                }
-                await interaction.editReply(answer);
-
-            } catch (error) {
-                console.error(error);
-                await interaction.editReply(`⚠️ エラーが発生しました: ${error.message}`);
-            }
+        if (commandName === 'search') {
+            const subcommand = options.getSubcommand();
+            await interaction.reply({ content: `検索機能 (${subcommand}) が呼び出されました！`, flags: 64 });
         }
     }
 });

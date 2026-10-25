@@ -1,7 +1,7 @@
 {
   "name": "discord-search-ai-bot",
   "version": "1.0.0",
-  "description": "Discord search and AI bot with OpenAI key rotation",
+  "description": "Discord search and AI bot with OpenAI key rotation and Gemini support",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"

@@ -1,11 +1,16 @@
-const { GoogleGenAI } = require('@google/genai'); // または fetch を使う簡易版でもOKですが、公式SDKやfetchで安全に呼び出します
-
-// 簡易的にGoogle Gemini APIを呼び出す関数
+// 標準の fetch を使った Gemini API 呼び出しマネージャー（追加パッケージ不要！）
 async function callGemini(prompt, modelName = 'gemini-1.5-flash') {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error('GEMINI_API_KEY が設定されていません。');
+    // 複数キーのローテーションにも対応できるようにカンマ区切りをサポート
+    const keysEnv = process.env.GEMINI_API_KEYS || process.env.GEMINI_API_KEY || '';
+    const apiKeys = keysEnv.split(',').map(k => k.trim()).filter(Boolean);
 
-    // Google公式の仕様または標準fetchで呼び出し
+    if (apiKeys.length === 0) {
+        throw new Error('GEMINI_API_KEY が設定されていません。');
+    }
+
+    // とりあえず最初のキーを使用（必要ならローテーションも可能）
+    const apiKey = apiKeys[0];
+
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -16,10 +21,14 @@ async function callGemini(prompt, modelName = 'gemini-1.5-flash') {
 
     const data = await response.json();
     if (!response.ok) {
-        throw new Error(data.error?.message || 'Gemini API呼び出しエラー');
+        throw new Error(data.error?.message || `Gemini APIエラー (Status: ${response.status})`);
     }
 
-    return data.candidates[0].content.parts[0].text;
+    try {
+        return data.candidates[0].content.parts[0].text;
+    } catch (e) {
+        throw new Error('Geminiからのレスポンス解析に失敗しました。');
+    }
 }
 
 module.exports = { callGemini };

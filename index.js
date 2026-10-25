@@ -52,17 +52,16 @@ const commands = [
                .setDescription('AIへの質問内容')
                .setRequired(true)
         )
-        .addStringOption(opt => 
-            opt.setName('model')
-               .setDescription('使用するAIモデルを選択')
-               .setRequired(false)
-               .addChoices(
-                   { name: 'Gemini 1.5 Flash (完全無料・おすすめ)', value: 'gemini-1.5-flash' },
-                   { name: 'OpenAI: gpt-4o', value: 'gpt-4o' },
-                   { name: 'OpenAI: gpt-3.5-turbo', value: 'gpt-3.5-turbo' },
-                   { name: 'OpenAI: o3-mini', value: 'o3-mini' }
-               )
-        ),
+.addStringOption(opt => 
+    opt.setName('model')
+       .setDescription('使用するAIモデルを選択')
+       .setRequired(false)
+       .addChoices(
+           { name: 'Gemini 1.5 Flash (完全無料・要API有効化)', value: 'gemini-1.5-flash' },
+           { name: 'OpenAI: gpt-4o', value: 'gpt-4o' },
+           { name: 'OpenAI: gpt-4o-mini', value: 'gpt-4o-mini' }
+       )
+)
 
     // 3. /models コマンド (利用可能なモデル一覧を表示)
     new SlashCommandBuilder()

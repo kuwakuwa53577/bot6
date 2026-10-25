@@ -86,16 +86,31 @@ const commands = [
 // 起動時にコマンドをDiscordへ登録
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
+// 起動時にコマンド登録と「利用可能なモデル一覧」の確認を行う
 client.once('ready', async () => {
     try {
         console.log(`🤖 ログインしました: ${client.user.tag}`);
+        
+        // --- 1. 現在のAPIキーで使えるモデルの一覧を取得してログに出す ---
+        try {
+            const openai = openaiManager.getClient();
+            const models = await openai.models.list();
+            console.log('📌 【モデル確認】このAPIキーで利用可能なモデル一覧:');
+            for (const model of models.data) {
+                console.log(`  - ${model.id}`);
+            }
+        } catch (modelErr) {
+            console.error('⚠️ モデル一覧の取得に失敗しました:', modelErr.message);
+        }
+
+        // --- 2. コマンド登録 ---
         await rest.put(
             Routes.applicationCommands(process.env.CLIENT_ID),
             { body: commands }
         );
         console.log('✨ アプリケーションコマンドの登録が完了しました！');
     } catch (error) {
-        console.error('コマンド登録エラー:', error);
+        console.error('初期化エラー:', error);
     }
 });
 

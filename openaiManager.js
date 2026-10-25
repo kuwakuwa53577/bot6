@@ -2,7 +2,6 @@ const OpenAI = require('openai');
 
 class OpenAIManager {
     constructor() {
-        // カンマ区切りで複数のAPIキーを取得 (例: "sk-...,sk-...,sk-...")
         const keysEnv = process.env.OPENAI_API_KEYS || process.env.OPENAI_API_KEY || '';
         this.apiKeys = keysEnv.split(',').map(k => k.trim()).filter(Boolean);
         
@@ -39,8 +38,19 @@ class OpenAIManager {
                 console.error(`❌ APIキー [Index: ${this.currentIndex}] でエラー発生:`, error.message);
                 
                 const status = error.status;
-                // レートリミット(429)やクォータ超過(402/503)、認証エラーの場合にローテーション
-                if (status === 429 || status === 402 || status === 401 || status === 503) {
+                const code = error.code;
+                
+                // 429、クォータ不足、残高切れ、認証エラーなどの場合は次のキーに切り替え
+                if (
+                    status === 429 || 
+                    status === 402 || 
+                    status === 401 || 
+                    status === 503 ||
+                    code === 'credit_balance_exhausted' ||
+                    code === 'insufficient_quota' ||
+                    error.message.includes('credits remaining') ||
+                    error.message.includes('quota')
+                ) {
                     const rotated = this.rotateKey();
                     if (!rotated) throw error;
                 } else {

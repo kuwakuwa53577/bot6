@@ -73,13 +73,13 @@ client.once('clientReady', async () => {
                     // ※ ここはご自身の用意したJSONや、公開されているリストのURLに変更できます
                     const response = await fetch('https://raw.githubusercontent.com/your-username/your-repo/main/servers.json').catch(() => null);
                     
-                    let servers = [];
+let servers = [];
                     if (response && response.ok) {
                         servers = await response.json();
                     } else {
-                        // 万が一外部APIに繋がらない場合のフォールバック（自動取得テスト用）
+                        // ★ここを実際の有効な招待URLに変更する！
                         servers = [
-                            { name: '自動取得テストサーバー', url: 'https://discord.gg/example' }
+                            { name: 'Discord Developers 公式サーバー', url: 'https://discord.gg/discord-developers' }
                         ];
                     }
 

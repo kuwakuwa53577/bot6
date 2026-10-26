@@ -1,7 +1,7 @@
 {
   "name": "discord-search-bot",
   "version": "1.0.0",
-  "description": "Discord search bot",
+  "description": "Discord Bot with search and auto-fetch features",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -9,5 +9,8 @@
   "dependencies": {
     "discord.js": "^14.14.0",
     "dotenv": "^16.4.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

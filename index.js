@@ -69,25 +69,18 @@ client.once('clientReady', async () => {
                     const channel = await client.channels.fetch(targetChannelId).catch(() => null);
                     if (!channel) return;
 
-                    // 1. 外部の公開サーバーリスト（招待URL付きJSON）を自動フェッチ
-                    // ※ ここはご自身の用意したJSONや、公開されているリストのURLに変更できます
-                    const response = await fetch('https://raw.githubusercontent.com/your-username/your-repo/main/servers.json').catch(() => null);
-                    
-let servers = [];
-                    if (response && response.ok) {
-                        servers = await response.json();
-                    } else {
-                        // ★ここを実際の有効な招待URLに変更する！
-                        servers = [
-                            { name: 'Discord Developers 公式サーバー', url: 'https://discord.gg/discord-developers' }
-                        ];
-                    }
+                    // ★ 本物の有効な招待URLリストをここに直接定義（追加・変更も自由に行えます）
+                    const servers = [
+                        { name: 'Discord Developers 公式サーバー', url: 'https://discord.gg/discord-developers' },
+                        { name: 'Node.js Community', url: 'https://discord.gg/nodejs' },
+                        { name: 'TypeScript', url: 'https://discord.gg/typescript' }
+                    ];
 
-                    // 2. リストからランダムに1つピックアップ
+                    // リストからランダムに1つピックアップ
                     const randomServer = servers[Math.floor(Math.random() * servers.length)];
                     if (!randomServer || !randomServer.url) return;
 
-                    // 3. Discord公式APIで未加入サーバーの情報を自動解析
+                    // Discord公式APIで未加入サーバーの情報を自動解析
                     let inviteInfo;
                     try {
                         inviteInfo = await client.fetchInvite(randomServer.url);

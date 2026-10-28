@@ -1,16 +1,53 @@
-const { 
-    Client, 
-    GatewayIntentBits, 
-    REST, 
-    Routes, 
-    SlashCommandBuilder, 
-    ApplicationIntegrationType, 
+const {
+    Client,
+    GatewayIntentBits,
+    REST,
+    Routes,
+    SlashCommandBuilder,
+    ApplicationIntegrationType,
     InteractionContextType,
-    EmbedBuilder 
+    EmbedBuilder
 } = require('discord.js');
 require('dotenv').config();
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
 
+// ----------------------------------------------------
+// 1. 簡易データ保存（JSONファイル）の設定
+// ----------------------------------------------------
+const DATA_FILE = path.join(__dirname, 'economy.json');
+let economyData = {};
+
+// 起動時にデータを読み込み
+if (fs.existsSync(DATA_FILE)) {
+    try {
+        economyData = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    } catch (e) {
+        console.error('データファイルの読み込みに失敗しました:', e);
+        economyData = {};
+    }
+}
+
+// データを保存する関数
+function saveData() {
+    fs.writeFileSync(DATA_FILE, JSON.stringify(economyData, null, 2));
+}
+
+// ユーザーデータの初期化・取得ヘルパー
+function getUserData(userId) {
+    if (!economyData[userId]) {
+        economyData[userId] = {
+            balance: 0,
+            lastDaily: 0
+        };
+    }
+    return economyData[userId];
+}
+
+// ----------------------------------------------------
+// 2. Client & コマンド定義
+// ----------------------------------------------------
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -20,36 +57,60 @@ const client = new Client({
     ]
 });
 
-// コマンド定義
 const commands = [
+    // ⏰ リマインダーコマンド
     new SlashCommandBuilder()
-        .setName('search')
-        .setDescription('メッセージやメンバーを検索・取得します')
-        .setIntegrationTypes([ApplicationIntegrationType.UserInstall, ApplicationIntegrationType.GuildInstall])
-        .setContexts([InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel])
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('message')
-                .setDescription('現在のチャンネルからメッセージをキーワード検索します')
-                .addStringOption(opt => opt.setName('query').setDescription('検索したいキーワード').setRequired(true))
-        )
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('member')
-                .setDescription('メンバーの情報を取得します')
-                .addUserOption(opt => opt.setName('user').setDescription('対象のユーザーを選択').setRequired(true))
-        ),
+        .setName('reminder')
+        .setDescription('指定した時間後に通知を行います')
+        .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
+        .setContexts([InteractionContextType.Guild])
+        .addIntegerOption(opt => opt.setName('minutes').setDescription('何分後に通知するか').setRequired(true).setMinValue(1))
+        .addStringOption(opt => opt.setName('message').setDescription('リマインドするメッセージ').setRequired(true)),
 
-    {
-        name: 'メッセージ詳細取得',
-        type: 3,
-        integration_types: [0, 1],
-        contexts: [0, 1, 2]
-    }
+    // 💰 ログインボーナス
+    new SlashCommandBuilder()
+        .setName('daily')
+        .setDescription('1日1回コインを獲得できます')
+        .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
+        .setContexts([InteractionContextType.Guild]),
+
+    // 💳 残高確認
+    new SlashCommandBuilder()
+        .setName('balance')
+        .setDescription('現在の所持コイン数を確認します')
+        .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
+        .setContexts([InteractionContextType.Guild])
+        .addUserOption(opt => opt.setName('user').setDescription('対象ユーザー（未指定で自分）')),
+
+    // 💸 送金
+    new SlashCommandBuilder()
+        .setName('pay')
+        .setDescription('他のメンバーにコインを送金します')
+        .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
+        .setContexts([InteractionContextType.Guild])
+        .addUserOption(opt => opt.setName('target').setDescription('送金先ユーザー').setRequired(true))
+        .addIntegerOption(opt => opt.setName('amount').setDescription('送金額').setRequired(true).setMinValue(1)),
+
+    // 🏆 ランキング
+    new SlashCommandBuilder()
+        .setName('ranking')
+        .setDescription('サーバー内の所持コインランキングを表示します')
+        .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
+        .setContexts([InteractionContextType.Guild]),
+
+    // 🎰 ガチャ
+    new SlashCommandBuilder()
+        .setName('gacha')
+        .setDescription('100コインでガチャを回します（ロールやアイテムが当たる！）')
+        .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
+        .setContexts([InteractionContextType.Guild])
 ];
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
+// ----------------------------------------------------
+// 3. Bot 起動処理
+// ----------------------------------------------------
 client.once('clientReady', async () => {
     try {
         console.log(`🤖 ログインしました: ${client.user.tag}`);
@@ -57,160 +118,242 @@ client.once('clientReady', async () => {
             Routes.applicationCommands(process.env.CLIENT_ID),
             { body: commands }
         );
-        console.log('✨ アプリケーションコマンドの登録が完了しました！');
-
-        // --- 1分ごとの自動取得・投稿タスク ---
-        const targetChannelId = process.env.TARGET_CHANNEL_ID;
-        if (targetChannelId) {
-            console.log('⏳ 1分間隔のサーバー自動取得・投稿タスクを開始します...');
-            
-            setInterval(async () => {
-                try {
-                    const channel = await client.channels.fetch(targetChannelId).catch(() => null);
-                    if (!channel) return;
-
-                    // ★ 本物の有効な招待URLリストをここに直接定義（追加・変更も自由に行えます）
-                    const servers = [
-                        { name: 'Discord Developers 公式サーバー', url: 'https://discord.gg/discord-developers' },
-                        { name: 'Node.js Community', url: 'https://discord.gg/nodejs' },
-                        { name: 'TypeScript', url: 'https://discord.gg/typescript' }
-                    ];
-
-                    // リストからランダムに1つピックアップ
-                    const randomServer = servers[Math.floor(Math.random() * servers.length)];
-                    if (!randomServer || !randomServer.url) return;
-
-                    // Discord公式APIで未加入サーバーの情報を自動解析
-                    let inviteInfo;
-                    try {
-                        inviteInfo = await client.fetchInvite(randomServer.url);
-                    } catch (e) {
-                        inviteInfo = null;
-                    }
-
-                    const embed = new EmbedBuilder()
-                        .setTitle(`🌐 自動ピックアップ: ${randomServer.name}`)
-                        .setColor(0x5865F2)
-                        .setTimestamp();
-
-                    if (inviteInfo && inviteInfo.guild) {
-                        embed.setDescription(`**[${inviteInfo.guild.name}](${randomServer.url})** の招待リンクを自動取得しました！\n\n参加はこちら 👉 ${randomServer.url}`)
-                             .setThumbnail(inviteInfo.guild.iconURL({ dynamic: true }))
-                             .addFields(
-                                 { name: 'サーバー名', value: inviteInfo.guild.name, inline: true },
-                                 { name: 'メンバー数', value: `${inviteInfo.memberCount || '不明'} 人`, inline: true }
-                             );
-                    } else {
-                        embed.setDescription(`**${randomServer.name}** の招待リンクをお届けします！\n\n参加はこちら 👉 ${randomServer.url}`);
-                    }
-
-                    await channel.send({ embeds: [embed] });
-                    console.log(`✨ サーバーの招待URLを自動投稿しました: ${randomServer.name}`);
-
-                } catch (err) {
-                    console.error('1分定期投稿エラー:', err.message);
-                }
-            }, 60 * 1000); // 60,000ms = 1分
-        } else {
-            console.log('⚠️ TARGET_CHANNEL_ID が設定されていないため、自動投稿はスキップされます。');
-        }
-
+        console.log('✨ コマンドの登録が完了しました！');
     } catch (error) {
         console.error('初期化エラー:', error);
     }
 });
 
-// インタラクション受信処理（検索コマンド等）
+// ----------------------------------------------------
+// 4. インタラクション処理
+// ----------------------------------------------------
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
-    const { commandName, options, channel, guild } = interaction;
+    const { commandName, options, user, guild, channel } = interaction;
 
-    if (commandName === 'search') {
-        const subcommand = options.getSubcommand();
-        await interaction.deferReply({ flags: 64 });
+    try {
+        // ================================================
+        // ⏰ /reminder
+        // ================================================
+        if (commandName === 'reminder') {
+            const minutes = options.getInteger('minutes');
+            const message = options.getString('message');
 
-        try {
-            if (subcommand === 'message') {
-                const query = options.getString('query');
-                const messages = await channel.messages.fetch({ limit: 100 });
-                const matched = messages.filter(m => m.content.includes(query));
+            await interaction.reply({
+                content: `⏰ **${minutes}分後**に「${message}」とお知らせします！`,
+                ephemeral: true
+            });
 
-                if (matched.size === 0) {
-                    return interaction.editReply(`🔍 "${query}" に一致するメッセージは見つかりませんでした（直近100件中）。`);
-                }
-
-                let resultText = `🔍 **"${query}" の検索結果 (直近の該当メッセージ)**:\n\n`;
-                let count = 0;
-                for (const [id, msg] of matched) {
-                    if (count >= 5) break;
-                    resultText += `・ **${msg.author.tag}**: ${msg.content} ([ジャンプ](${msg.url}))\n`;
-                    count++;
-                }
-
-                await interaction.editReply(resultText);
-            }
-            else if (subcommand === 'member') {
-                const user = options.getUser('user');
-                const member = guild ? await guild.members.fetch(user.id).catch(() => null) : null;
-
+            setTimeout(async () => {
                 const embed = new EmbedBuilder()
-                    .setTitle(`👤 ユーザー情報: ${user.tag}`)
-                    .setThumbnail(user.displayAvatarURL())
-                    .setColor(0x00AAFF)
-                    .addFields(
-                        { name: 'ID', value: user.id, inline: true },
-                        { name: 'アカウント作成日', value: `<t:${Math.floor(user.createdTimestamp / 1000)}:R>`, inline: true }
-                    );
+                    .setTitle('⏰ リマインダー通知')
+                    .setDescription(`**${user}** さん、時間になりました！\n\n📝 **内容:** ${message}`)
+                    .setColor(0xFF9900)
+                    .setTimestamp();
 
-                if (member) {
-                    embed.addFields(
-                        { name: 'サーバー情報（参加日）', value: member.joinedTimestamp ? `<t:${Math.floor(member.joinedTimestamp / 1000)}:R>` : '不明', inline: true }
-                    );
-                }
+                await channel.send({ content: `${user}`, embeds: [embed] }).catch(() => {});
+            }, minutes * 60 * 1000);
+        }
 
-                await interaction.editReply({ embeds: [embed] });
+        // ================================================
+        // 💰 /daily
+        // ================================================
+        else if (commandName === 'daily') {
+            const userData = getUserData(user.id);
+            const now = Date.now();
+            const cooldown = 24 * 60 * 60 * 1000; // 24時間
+
+            if (now - userData.lastDaily < cooldown) {
+                const nextTime = Math.floor((userData.lastDaily + cooldown) / 1000);
+                return interaction.reply({
+                    content: `⏳ 本日のデイリーボーナスは受取済みです。\n次回受取可能時刻: <t:${nextTime}:R>`,
+                    ephemeral: true
+                });
             }
-        } catch (error) {
-            console.error(error);
-            await interaction.editReply(`⚠️ 検索中にエラーが発生しました: ${error.message}`);
+
+            // 100〜300コインをランダム付与
+            const reward = Math.floor(Math.random() * 201) + 100;
+            userData.balance += reward;
+            userData.lastDaily = now;
+            saveData();
+
+            const embed = new EmbedBuilder()
+                .setTitle('🎁 デイリーボーナス！')
+                .setDescription(`**${reward} コイン** を獲得しました！\n💰 現在の所持金: **${userData.balance} コイン**`)
+                .setColor(0x00FF7F)
+                .setTimestamp();
+
+            await interaction.reply({ embeds: [embed] });
+        }
+
+        // ================================================
+        // 💳 /balance
+        // ================================================
+        else if (commandName === 'balance') {
+            const targetUser = options.getUser('user') || user;
+            const userData = getUserData(targetUser.id);
+
+            const embed = new EmbedBuilder()
+                .setTitle(`💳 ${targetUser.username} さんの口座`)
+                .setThumbnail(targetUser.displayAvatarURL())
+                .addFields({ name: '所持コイン', value: `**${userData.balance}** コイン` })
+                .setColor(0x00AAFF)
+                .setTimestamp();
+
+            await interaction.reply({ embeds: [embed] });
+        }
+
+        // ================================================
+        // 💸 /pay
+        // ================================================
+        else if (commandName === 'pay') {
+            const target = options.getUser('target');
+            const amount = options.getInteger('amount');
+
+            if (target.id === user.id) {
+                return interaction.reply({ content: '⚠️ 自分自身には送金できません。', ephemeral: true });
+            }
+            if (target.bot) {
+                return interaction.reply({ content: '⚠️ Botには送金できません。', ephemeral: true });
+            }
+
+            const senderData = getUserData(user.id);
+            if (senderData.balance < amount) {
+                return interaction.reply({ content: `⚠️ コインが不足しています。（所持: ${senderData.balance} コイン）`, ephemeral: true });
+            }
+
+            const targetData = getUserData(target.id);
+            senderData.balance -= amount;
+            targetData.balance += amount;
+            saveData();
+
+            const embed = new EmbedBuilder()
+                .setTitle('💸 送金完了')
+                .setDescription(`**${user.username}** さんが **${target.username}** さんに **${amount} コイン** を送金しました！`)
+                .setColor(0x57F287)
+                .setTimestamp();
+
+            await interaction.reply({ embeds: [embed] });
+        }
+
+        // ================================================
+        // 🏆 /ranking
+        // ================================================
+        else if (commandName === 'ranking') {
+            const sorted = Object.entries(economyData)
+                .sort(([, a], [, b]) => b.balance - a.balance)
+                .slice(0, 10);
+
+            if (sorted.length === 0) {
+                return interaction.reply({ content: 'まだ誰データもありません。', ephemeral: true });
+            }
+
+            let rankText = '';
+            for (let i = 0; i < sorted.length; i++) {
+                const [id, data] = sorted[i];
+                const member = await guild.members.fetch(id).catch(() => null);
+                const name = member ? member.displayName : `ユーザー(${id})`;
+                const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+                rankText += `${medal} **${name}**: ${data.balance} コイン\n`;
+            }
+
+            const embed = new EmbedBuilder()
+                .setTitle('🏆 リッチマンランキング (Top 10)')
+                .setDescription(rankText)
+                .setColor(0xF1C40F)
+                .setTimestamp();
+
+            await interaction.reply({ embeds: [embed] });
+        }
+
+        // ================================================
+        // 🎰 /gacha
+        // ================================================
+        else if (commandName === 'gacha') {
+            const GACHA_COST = 100;
+            const userData = getUserData(user.id);
+
+            if (userData.balance < GACHA_COST) {
+                return interaction.reply({
+                    content: `⚠️ コインが足りません！ガチャを引くには **${GACHA_COST} コイン** 必要です。（所持: ${userData.balance} コイン）`,
+                    ephemeral: true
+                });
+            }
+
+            // コイン消費
+            userData.balance -= GACHA_COST;
+
+            // ガチャの排出テーブル定義
+            // ★ロールを景品にする場合、対象のロールIDをここに入れてください
+            const ROLE_SSR_ID = 'YOUR_SSR_ROLE_ID'; 
+
+            const rand = Math.random() * 100; // 0 ~ 100
+            let result = { title: '', desc: '', color: 0x95A5A6 };
+
+            if (rand < 5) {
+                // UR: 5% (高額キャッシュバック)
+                const bonus = 500;
+                userData.balance += bonus;
+                result = {
+                    title: '🌈 超激レア (UR)！！',
+                    desc: `大当たり！超大金の **${bonus} コイン** を獲得しました！`,
+                    color: 0xE91E63
+                };
+            } else if (rand < 20) {
+                // SSR: 15% (限定ロール付与)
+                result = {
+                    title: '🌟 激レア (SSR)！',
+                    desc: '「ガチャマスター」の称号（ロール）を獲得しました！',
+                    color: 0xF1C40F
+                };
+
+                // ロール付与処理（ロールIDが設定されている場合）
+                if (ROLE_SSR_ID && ROLE_SSR_ID !== 'YOUR_SSR_ROLE_ID') {
+                    const member = await guild.members.fetch(user.id).catch(() => null);
+                    if (member) await member.roles.add(ROLE_SSR_ID).catch(() => {});
+                }
+            } else if (rand < 50) {
+                // SR: 30% (小額キャッシュバック)
+                const bonus = 150;
+                userData.balance += bonus;
+                result = {
+                    title: '✨ レア (SR)',
+                    desc: `元取れ！ **${bonus} コイン** を獲得しました！`,
+                    color: 0x3498DB
+                };
+            } else {
+                // N: 50% (はずれ)
+                result = {
+                    title: '⚪ ノーマル (N)',
+                    desc: '残念！ポケットティッシュを獲得しました。',
+                    color: 0x95A5A6
+                };
+            }
+
+            saveData();
+
+            const embed = new EmbedBuilder()
+                .setTitle(`🎰 ガチャ結果: ${result.title}`)
+                .setDescription(`${result.desc}\n\n💰 残り所持金: **${userData.balance} コイン**`)
+                .setColor(result.color)
+                .setFooter({ text: `ガチャ費用: ${GACHA_COST} コイン` })
+                .setTimestamp();
+
+            await interaction.reply({ embeds: [embed] });
+        }
+
+    } catch (error) {
+        console.error(error);
+        if (interaction.deferred || interaction.replied) {
+            await interaction.editReply('⚠️ エラーが発生しました。');
+        } else {
+            await interaction.reply({ content: '⚠️ エラーが発生しました。', ephemeral: true });
         }
     }
 });
 
-// チャットに招待リンクが貼られたら自動で展開する機能
-client.on('messageCreate', async message => {
-    if (message.author.bot || !message.guild) return;
-
-    const inviteRegex = /(?:https?:\/\/)?(?:www\.)?(?:discord\.(?:gg|com\/invite)\/[a-zA-Z0-9-]+)/g;
-    const matches = message.content.match(inviteRegex);
-    if (!matches) return;
-
-    const inviteUrl = matches[0];
-
-    try {
-        const invite = await client.fetchInvite(inviteUrl);
-        if (!invite || !invite.guild) return;
-
-        const embed = new EmbedBuilder()
-            .setTitle(`🔗 招待されたサーバー情報`)
-            .setDescription(`**[${invite.guild.name}](${inviteUrl})**`)
-            .setThumbnail(invite.guild.iconURL({ dynamic: true }))
-            .setColor(0x57F287)
-            .addFields(
-                { name: 'サーバー名', value: invite.guild.name, inline: true },
-                { name: 'メンバー数', value: `${invite.memberCount || '不明'} 人`, inline: true }
-            )
-            .setFooter({ text: `送信者: ${message.author.tag}` })
-            .setTimestamp();
-
-        await message.reply({ embeds: [embed] });
-    } catch (error) {
-        // エラー時はスルー
-    }
-});
-
-// Render対策 HTTPサーバー
+// Render等ホスティング用の簡易HTTPサーバー
 const PORT = process.env.PORT || 10000;
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });

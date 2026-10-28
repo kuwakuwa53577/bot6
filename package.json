@@ -1,14 +1,14 @@
 {
-  "name": "discord-search-bot",
+  "name": "discord-comprehensive-bot",
   "version": "1.0.0",
-  "description": "Discord Bot with search and auto-fetch features",
+  "description": "Discord Comprehensive Bot with Economy, Gacha, Voice Management, and Minigames",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "discord.js": "^14.14.0",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.0"
   },
   "engines": {
     "node": ">=18.0.0"

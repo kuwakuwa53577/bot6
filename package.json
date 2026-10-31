@@ -1,16 +1,14 @@
 {
-  "name": "discord-comprehensive-bot",
+  "name": "discord-bot",
   "version": "1.0.0",
-  "description": "Discord Comprehensive Bot with Economy, Gacha, Voice Management, and Minigames",
+  "description": "Discord Bot with Gemini AI and Economy System",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "discord.js": "^14.14.0",
-    "dotenv": "^16.4.0"
-  },
-  "engines": {
-    "node": ">=18.0.0"
+    "@google/genai": "^0.1.1",
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.4.5"
   }
 }

@@ -4,8 +4,6 @@ const {
     REST,
     Routes,
     SlashCommandBuilder,
-    ApplicationIntegrationType,
-    InteractionContextType,
     EmbedBuilder,
     ActionRowBuilder,
     ButtonBuilder,
@@ -15,6 +13,10 @@ require('dotenv').config();
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+
+// 🤖 Gemini API の初期化
+const { GoogleGenAI } = require('@google/genai');
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 // ----------------------------------------------------
 // ⚙️ 設定・定数エリア（ご自身のサーバーのIDに書き換えてください）
@@ -98,7 +100,7 @@ function checkAndAwardBadges(userData) {
 const temporaryChannels = new Map();
 
 // ----------------------------------------------------
-// 3. Client 初期化
+// 3. Client 初期化 (AIの返答やメッセージ検知に必要な MessageContent を含む)
 // ----------------------------------------------------
 const client = new Client({
     intents: [
@@ -244,12 +246,43 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 });
 
 // ----------------------------------------------------
-// 8. インタラクション処理（コマンド＆ボタン）
+// 8. プレフィックスコマンド処理 (.kuwakuwa でGemini AIに質問)
+// ----------------------------------------------------
+client.on('messageCreate', async message => {
+    if (message.author.bot) return;
+    if (!message.content.startsWith('.kuwakuwa')) return;
+
+    const args = message.content.slice(9).trim();
+    if (!args) {
+        return message.reply('⚠️ AIに聞きたい言葉を入力してください。\n使用例: `.kuwakuwa こんにちは`');
+    }
+
+    await message.channel.sendTyping();
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: args,
+        });
+
+        const replyText = response.text;
+
+        if (replyText.length > 2000) {
+            await message.reply(replyText.substring(0, 1997) + '...');
+        } else {
+            await message.reply(replyText);
+        }
+    } catch (error) {
+        console.error('Gemini APIエラー:', error);
+        await message.reply('⚠️ AIとの通信中にエラーが発生しました。');
+    }
+});
+
+// ----------------------------------------------------
+// 9. インタラクション処理（スラッシュコマンド＆ボタン）
 // ----------------------------------------------------
 client.on('interactionCreate', async interaction => {
-    // ------------------------------------------------
     // 🔘 ボタンインタラクション処理
-    // ------------------------------------------------
     if (interaction.isButton()) {
         const { guild, user } = interaction;
 
@@ -299,9 +332,7 @@ client.on('interactionCreate', async interaction => {
         return;
     }
 
-    // ------------------------------------------------
     // 💬 スラッシュコマンド処理
-    // ------------------------------------------------
     if (!interaction.isChatInputCommand()) return;
     const { commandName, options, user } = interaction;
     const userData = getUserData(user.id);
@@ -482,7 +513,7 @@ client.on('interactionCreate', async interaction => {
 });
 
 // ----------------------------------------------------
-// 9. Render対策 HTTPサーバー起動 ＆ ログイン
+// 10. Render対策 HTTPサーバー起動 ＆ ログイン
 // ----------------------------------------------------
 const PORT = process.env.PORT || 10000;
 http.createServer((req, res) => {
